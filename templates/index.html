@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="hero">
+    <h1>{% if lang.code == 'en' %}Posts{% else %}Articles{% endif %}</h1>
+    <p class="muted">{% if lang.code == 'en' %}Newest first.{% else %}Du plus récent au plus ancien.{% endif %}</p>
+  </section>
+
+  <section class="posts">
+    {% for p in posts %}
+      <article class="card">
+        <div class="card__meta">
+          {% if p.show_date %}<time datetime="{{ p.date_iso }}">{{ p.date_human }}</time>{% endif %}
+          {% if p.show_date and p.show_reading_time %}<span class="dot">•</span>{% endif %}
+          {% if p.show_reading_time %}<span class="muted">{{ p.reading_time }}</span>{% endif %}
+        </div>
+        <h2 class="card__title"><a href="{{ p.url }}">{{ p.title }}</a></h2>
+        {% if p.excerpt %}<p class="card__excerpt">{{ p.excerpt }}</p>{% endif %}
+      </article>
+    {% else %}
+      <p>{% if lang.code == 'en' %}No posts found.{% else %}Aucun article trouvé.{% endif %}</p>
+    {% endfor %}
+  </section>
+
+  {% if pagination and pagination.enabled %}
+    <nav class="pagination" aria-label="Pagination">
+      <div class="pagination__inner">
+        {% if pagination.prev_url %}
+          <a class="pagination__link" href="{{ pagination.prev_url }}" rel="prev">← {% if lang.code == 'en' %}Previous{% else %}Précédent{% endif %}</a>
+        {% else %}
+          <span class="pagination__link is-disabled" aria-disabled="true">← {% if lang.code == 'en' %}Previous{% else %}Précédent{% endif %}</span>
+        {% endif %}
+<div class="pagination__pages">
+  {% set w = 2 %}
+
+  {# Page 1 #}
+  {% if pagination.current == 1 %}
+    <span class="pagination__page is-current" aria-current="page">[1]</span>
+  {% else %}
+    <a class="pagination__page" href="{{ pagination.pages[0].url }}">1</a>
+  {% endif %}
+
+  {# Left ellipsis #}
+  {% if pagination.current - w > 2 %}
+    <span class="pagination__ellipsis">…</span>
+  {% endif %}
+
+  {# Middle window #}
+  {% for pg in pagination.pages %}
+    {% if pg.num > 1 and pg.num < pagination.total
+          and pg.num >= pagination.current - w
+          and pg.num <= pagination.current + w %}
+      {% if pg.is_current %}
+        <span class="pagination__page is-current" aria-current="page">[{{ pg.num }}]</span>
+      {% else %}
+        <a class="pagination__page" href="{{ pg.url }}">{{ pg.num }}</a>
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+
+  {# Right ellipsis #}
+  {% if pagination.current + w < pagination.total - 1 %}
+    <span class="pagination__ellipsis">…</span>
+  {% endif %}
+
+  {# Last page #}
+  {% if pagination.total > 1 %}
+    {% set last = pagination.pages[pagination.total - 1] %}
+    {% if pagination.current == pagination.total %}
+      <span class="pagination__page is-current" aria-current="page">[{{ pagination.total }}]</span>
+    {% else %}
+      <a class="pagination__page" href="{{ last.url }}">{{ pagination.total }}</a>
+    {% endif %}
+  {% endif %}
+</div>
+
+{% if pagination.next_url %}
+          <a class="pagination__link" href="{{ pagination.next_url }}" rel="next">{% if lang.code == 'en' %}Next{% else %}Suivant{% endif %} →</a>
+        {% else %}
+          <span class="pagination__link is-disabled" aria-disabled="true">{% if lang.code == 'en' %}Next{% else %}Suivant{% endif %} →</span>
+        {% endif %}
+      </div>
+    </nav>
+  {% endif %}
+{% endblock %}

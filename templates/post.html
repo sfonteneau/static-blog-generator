@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+  <article class="post">
+    <header class="post__header">
+      <div class="post__meta">
+        {% if post.show_date %}<time datetime="{{ post.date_iso }}">{{ post.date_human }}</time>{% endif %}
+        {% if post.show_date and post.show_reading_time %}<span class="dot">•</span>{% endif %}
+        {% if post.show_reading_time %}<span class="muted">{{ post.reading_time }}</span>{% endif %}
+      </div>
+      <h1 class="post__title">{{ post.title }}</h1>
+
+      {% if post.translations and post.translations|length > 0 %}
+        <div class="post__translations">
+          {% if lang.code == 'en' %}Other languages:{% else %}Autres langues :{% endif %}
+          {% for tr in post.translations %}
+            <a class="pill" href="{{ tr.url }}">{{ tr.label }}</a>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </header>
+
+    <div class="post__content">{{ post.html | safe }}</div>
+
+    <hr class="sep" />
+    <p class="muted"><a href="{{ home_href }}">{% if lang.code == 'en' %}← Back to home{% else %}← Retour à l’accueil{% endif %}</a></p>
+  </article>
+{% endblock %}

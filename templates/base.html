@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="{{ lang.code }}">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>{{ page_title }}</title>
+  <meta name="description" content="{{ site.tagline|default('') }}" />
+  <link rel="stylesheet" href="{{ rel }}/assets/style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <div class="brand">
+        <a class="brand__title" href="{{ home_href }}">{{ site.title }}</a>
+        {% if site.tagline %}<div class="brand__tagline">{{ site.tagline }}</div>{% endif %}
+      </div>
+
+      <div class="header-right">
+        <nav class="nav">
+          {% for item in menu %}
+            {% set href = item.href %}
+            {% set cls = "nav__link" ~ (" is-active" if item.active else "") %}
+            {% if href.startswith('http://') or href.startswith('https://') %}
+              <a class="{{ cls }}" href="{{ href }}" target="_blank" rel="noopener"{% if item.active %} aria-current="page"{% endif %}>{{ item.label }}</a>
+            {% elif href.startswith('mailto:') %}
+              <a class="{{ cls }}" href="{{ href }}"{% if item.active %} aria-current="page"{% endif %}>{{ item.label }}</a>
+            {% else %}
+              <a class="{{ cls }}" href="{{ href }}"{% if item.active %} aria-current="page"{% endif %}>{{ item.label }}</a>
+            {% endif %}
+          {% endfor %}
+        </nav>
+
+        <button class="theme-toggle" type="button" aria-label="Basculer thème" title="Basculer thème">
+          <span class="theme-toggle__icon" aria-hidden="true">🌓</span>
+          <span class="theme-toggle__label">Thème</span>
+        </button>
+
+        {% if languages and languages|length > 1 %}
+        <details class="lang-menu">
+          <summary class="lang-menu__summary" aria-label="Changer de langue">
+            {{ lang.label }} <span class="lang-menu__chev" aria-hidden="true">▾</span>
+          </summary>
+          <div class="lang-menu__panel">
+            {% for l in languages %}
+              {% if l.code == lang.code %}
+                <span class="lang-menu__item is-active" aria-current="true">{{ l.label }}</span>
+              {% else %}
+                {#
+                  Si la page courante existe dans une autre langue,
+                  on pointe vers l'équivalent (même page) au lieu de la home.
+                  Fallback: page d'accueil de la langue.
+                #}
+                <a class="lang-menu__item" href="{{ (lang_links[l.code] if lang_links and (l.code in lang_links) else (rel ~ l.path ~ 'index.html')) }}">{{ l.label }}</a>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </details>
+        {% endif %}
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="muted">
+        © {{ now_year }}{% if site.author %} — {{ site.author }}{% endif %}
+      </div>
+    </div>
+  </footer>
+
+  <script src="{{ rel }}/assets/theme.js"></script>
+</body>
+</html>
