@@ -167,14 +167,14 @@ class AccessibilityHTMLParser(HTMLParser):
 
         if tag == "img":
             if "alt" not in attrs_map:
-                self.issues.append(AccessibilityIssue("warning", "image sans attribut alt"))
+                self.issues.append(AccessibilityIssue("warning", "image missing an alt attribute"))
             elif not str(attrs_map.get("alt") or "").strip():
-                self.issues.append(AccessibilityIssue("advisory", "image avec alt vide (correct uniquement si l’image est décorative)"))
+                self.issues.append(AccessibilityIssue("advisory", "image has an empty alt attribute (valid only if the image is decorative)"))
             if self._link_depth and attrs_map.get("alt"):
                 self._link_text.append(str(attrs_map["alt"]))
 
         elif tag == "iframe" and not str(attrs_map.get("title") or "").strip():
-            self.issues.append(AccessibilityIssue("warning", "iframe sans attribut title"))
+            self.issues.append(AccessibilityIssue("warning", "iframe missing a title attribute"))
 
         elif tag == "a":
             self._link_depth += 1
@@ -189,7 +189,7 @@ class AccessibilityHTMLParser(HTMLParser):
             if self._link_depth == 1:
                 label = re.sub(r"\s+", " ", "".join(self._link_text)).strip().lower().strip(" .,:;!?…")
                 if label in GENERIC_LINK_TEXTS:
-                    self.issues.append(AccessibilityIssue("warning", f"libellé de lien trop vague : « {label} »"))
+                    self.issues.append(AccessibilityIssue("warning", f"link text is too vague: “{label}”"))
             self._link_depth -= 1
             if self._link_depth == 0:
                 self._link_text = []
@@ -213,7 +213,7 @@ def audit_accessibility_html(html: str) -> List[AccessibilityIssue]:
     previous = 1  # the article title in post.html
     for level in parser.headings:
         if level > previous + 1:
-            issues.append(AccessibilityIssue("warning", f"saut de niveau de titre : h{previous} vers h{level}"))
+            issues.append(AccessibilityIssue("warning", f"heading level skipped: h{previous} to h{level}"))
         previous = level
 
     # Keep warnings readable when the same issue occurs several times.
