@@ -129,7 +129,7 @@ class Post:
     def reading_time(self) -> str:
         words = max(1, len(re.findall(r"\w+", self.html)))
         minutes = max(1, int(round(words / 200)))
-        return f"{minutes} min" if self.lang == "en" else f"{minutes} min de lecture"
+        return f"{minutes} min read"
 
 
 FRONT_MATTER_RE = re.compile(r"^\s*---\s*\n(.*?)\n---\s*\n(.*)$", re.DOTALL)
@@ -151,11 +151,11 @@ def read_text(path: Path) -> str:
 def parse_front_matter(markdown_text: str, path: Path) -> Tuple[Dict[str, Any], str]:
     m = FRONT_MATTER_RE.match(markdown_text)
     if not m:
-        raise ValueError(f"{path}: front matter YAML manquant.")
+        raise ValueError(f"{path}: missing YAML front matter.")
     fm_raw, body = m.group(1), m.group(2)
     fm = yaml.safe_load(fm_raw) or {}
     if not isinstance(fm, dict):
-        raise ValueError(f"{path}: front matter invalide.")
+        raise ValueError(f"{path}: invalid front matter.")
     return fm, body
 
 
@@ -166,7 +166,7 @@ def parse_date(value: Any, path: Path) -> date:
         return value.date()
     if isinstance(value, str):
         return datetime.strptime(value.strip(), "%Y-%m-%d").date()
-    raise ValueError(f"{path}: date invalide.")
+    raise ValueError(f"{path}: invalid date.")
 
 
 def make_excerpt(html: str, max_chars: int = 180) -> str:
@@ -240,7 +240,7 @@ def load_config() -> Tuple[Dict[str, Any], List[Lang]]:
     data.setdefault("pagination", {})
     data.setdefault("languages", [{"code": "fr", "label": "FR", "path": "/"}, {"code": "en", "label": "EN", "path": "/en/"}])
     site = data["site"]
-    site.setdefault("title", "Mon Blog")
+    site.setdefault("title", "My Blog")
     site.setdefault("tagline", "")
     site.setdefault("author", "")
     # Pagination (home page) — defaults to 10 posts/page
@@ -309,12 +309,12 @@ def copy_static_assets(style: str = "style.css", theme: str = "theme.js") -> Non
 
     style_src = resolve_asset_path(style, "style.css")
     if not style_src.exists() or not style_src.is_file():
-        raise FileNotFoundError(f"Fichier CSS manquant: {style_src}")
+        raise FileNotFoundError(f"Missing CSS file: {style_src}")
     shutil.copy2(style_src, ASSETS_DIR / "style.css")
 
     theme_src = resolve_asset_path(theme, "theme.js")
     if not theme_src.exists() or not theme_src.is_file():
-        raise FileNotFoundError(f"Fichier theme.js manquant: {theme_src}")
+        raise FileNotFoundError(f"Missing theme.js file: {theme_src}")
     shutil.copy2(theme_src, ASSETS_DIR / "theme.js")
 
 
@@ -518,7 +518,7 @@ def build() -> None:
         lang = str(fm.get("lang", "")).strip()
         key = str(fm.get("key", "")).strip()
         if not (title and slug and lang and key and fm.get("date")):
-            raise ValueError(f"{md_path}: champs requis manquants (title, date, slug, lang, key).")
+            raise ValueError(f"{md_path}: missing required fields (title, date, slug, lang, key).")
         d = parse_date(fm.get("date"), md_path)
         show_date = fm.get("show_date", fm.get("display_date", fm.get("showDate", None)))
         if show_date is None:
@@ -852,7 +852,7 @@ def build() -> None:
         lang_links={},
         lang={"code": "fr", "label": "FR", "path": "/"},
         home_href="./index.html",
-        meta_description="Page introuvable",
+        meta_description="Page not found",
         canonical_url="",
         og_image_url=og_image_url,
         rss_url="",
@@ -869,27 +869,27 @@ def build() -> None:
         write_robots(site_url, sitemap_enabled=sitemap_enabled)
     elif sitemap_enabled or rss_enabled:
         print(
-            "⚠️  SEO: site.url absent. sitemap.xml et RSS non générés. "
-            "Ajoutez site.url dans config.yaml (ou définissez SITE_URL).",
+            "⚠️  SEO: site.url is missing. sitemap.xml and RSS feeds were not generated. "
+            "Add site.url to config.yaml (or define SITE_URL).",
             file=sys.stderr,
         )
 
-    print(f"✅ Build terminé: {DIST_DIR}")
+    print(f"✅ Build complete: {DIST_DIR}")
 
 
 def main(argv: List[str]) -> int:
-    parser = argparse.ArgumentParser(description="Générateur de blog statique FR/EN")
+    parser = argparse.ArgumentParser(description="Static FR/EN blog generator")
     parser.add_argument("command", nargs="?", default="build", choices=["build"])
     parser.add_argument(
         "--config",
         default="config.yaml",
-        help="Fichier YAML du projet consommateur (défaut: ./config.yaml)",
+        help="YAML file for the consumer project (default: ./config.yaml)",
     )
     args = parser.parse_args(argv[1:])
 
     configure_paths(Path(args.config))
     if not CONFIG_FILE.exists():
-        parser.error(f"fichier de configuration introuvable: {CONFIG_FILE}")
+        parser.error(f"configuration file not found: {CONFIG_FILE}")
 
     if args.command == "build":
         build()
