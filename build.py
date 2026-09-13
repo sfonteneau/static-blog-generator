@@ -296,6 +296,10 @@ def resolve_asset_path(value: str, default_name: str) -> Path:
 def copy_static_assets(style: str = "style.css", theme: str = "theme.js") -> None:
     ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
+    favicon_src = POSTS_DIR / "favicon.ico"
+    if favicon_src.is_file():
+        shutil.copy2(favicon_src, DIST_DIR / "favicon.ico")
+
     style_src = resolve_asset_path(style, "style.css")
     if not style_src.exists() or not style_src.is_file():
         raise FileNotFoundError(f"Fichier CSS manquant: {style_src}")

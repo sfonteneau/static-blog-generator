@@ -12,6 +12,7 @@
     {% set default_lang = languages[0].code if languages else lang.code %}
     {% if default_lang in hreflang_urls %}<link rel="alternate" hreflang="x-default" href="{{ hreflang_urls[default_lang] }}" />{% endif %}
   {% endif %}
+  <link rel="icon" href="{{ rel }}/favicon.ico" />
   <link rel="stylesheet" href="{{ rel }}/assets/style.css" />
 </head>
 <body>
