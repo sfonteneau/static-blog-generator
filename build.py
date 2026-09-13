@@ -2,49 +2,49 @@
 # -*- coding: utf-8 -*-
 
 """
-Générateur de blog statique depuis Markdown (multi-langues FR/EN).
+Static blog generator from Markdown (multilingual FR/EN).
 
-Entrée:
+Input:
   content/posts/<key>/fr.md
-  content/posts/<key>/en.md   (optionnel)
-  content/posts/<key>/images/...   (images locales référencées comme images/...)
+  content/posts/<key>/en.md   (optional)
+  content/posts/<key>/images/...   (local images referenced as images/...)
 
-Front matter YAML requis:
-  title: "..."        (obligatoire)
-  date: "YYYY-MM-DD"  (obligatoire)
-  slug: "..."         (obligatoire, par langue)
-  lang: "fr"|"en"     (obligatoire)
-  key:  "..."         (obligatoire; regroupe les traductions)
+Required YAML front matter:
+  title: "..."        (required)
+  date: "YYYY-MM-DD"  (required)
+  slug: "..."         (required, per language)
+  lang: "fr"|"en"     (required)
+  key:  "..."         (required; groups translations)
 
-Templates (dans le dépôt du générateur):
+Templates (in the generator repository):
   templates/base.html
   templates/index.html
   templates/post.html
 
-Contenu / configuration / assets (dans le projet qui utilise le générateur):
+Content / configuration / assets (in the project using the generator):
   content/...
   config.yaml
   assets/style.css
   assets/theme.js
 
-Le chemin du CSS dans config.yaml peut être un nom historique (style8.css),
-un chemin relatif à config.yaml (assets/style8.css), ou un chemin absolu.
+The CSS path in config.yaml can be a legacy name (style8.css),
+a path relative to config.yaml (assets/style8.css), or an absolute path.
 
-Sortie:
+Output:
   dist/index.html
   dist/<slug>/index.html
   dist/en/index.html
   dist/en/<slug>/index.html
   dist/assets/style.css
   dist/assets/theme.js
-  dist/assets/img/<fichier.fingerprint.ext>
-  dist/sitemap.xml       (si site.url est configuré)
-  dist/robots.txt        (si site.url est configuré)
-  dist/rss.xml           (FR, si site.url est configuré)
-  dist/en/rss.xml        (EN, si site.url est configuré)
-  dist/404.html           (toujours généré)
+  dist/assets/img/<file.fingerprint.ext>
+  dist/sitemap.xml       (if site.url is configured)
+  dist/robots.txt        (if site.url is configured)
+  dist/rss.xml           (FR, if site.url is configured)
+  dist/en/rss.xml        (EN, if site.url is configured)
+  dist/404.html           (always generated)
 
-Commande depuis la racine du projet consommateur:
+Command from the consumer project root:
   python generator/build.py build --config config.yaml
 """
 
@@ -72,9 +72,9 @@ import markdown as md
 
 GENERATOR_ROOT = Path(__file__).resolve().parent
 
-# Ces chemins sont initialisés à partir du fichier de configuration.
-# Le générateur peut ainsi vivre dans un submodule sans imposer sa propre
-# arborescence au projet consommateur.
+# These paths are initialized from the configuration file.
+# This allows the generator to live in a submodule without imposing its own
+# directory structure on the consumer project.
 PROJECT_ROOT = Path.cwd().resolve()
 CONFIG_FILE = PROJECT_ROOT / "config.yaml"
 POSTS_DIR = PROJECT_ROOT / "content"
@@ -85,7 +85,7 @@ TEMPLATES_DIR = GENERATOR_ROOT / "templates"
 
 
 def configure_paths(config_path: Path) -> None:
-    """Configure les chemins du projet à partir de l'emplacement du YAML."""
+    """Configure project paths from the YAML file location."""
     global PROJECT_ROOT, CONFIG_FILE, POSTS_DIR, DIST_DIR, ASSETS_DIR, ASSETS_SRC_DIR
 
     CONFIG_FILE = config_path.expanduser().resolve()
@@ -201,8 +201,8 @@ def fingerprint_copy(src: Path, dst_dir: Path) -> str:
 
 def process_images_in_text(body: str, md_path: Path, rel_from_post: str) -> str:
     """
-    Copie les images référencées en local (images/...) vers dist/assets/img avec fingerprint,
-    puis réécrit les URLs dans le markdown (ou HTML inline) pour pointer vers ../../assets/img/.. selon profondeur.
+    Copy locally referenced images (images/...) to dist/assets/img with fingerprinting,
+    then rewrite URLs in Markdown (or inline HTML) to point to ../../assets/img/.. based on depth.
     """
     out_img_dir = ASSETS_DIR / "img"
 
@@ -243,7 +243,7 @@ def load_config() -> Tuple[Dict[str, Any], List[Lang]]:
     site.setdefault("title", "Mon Blog")
     site.setdefault("tagline", "")
     site.setdefault("author", "")
-    # Pagination (page d'accueil) — par défaut 10 posts/page
+    # Pagination (home page) — defaults to 10 posts/page
     pagination = data["pagination"] if isinstance(data.get("pagination"), dict) else {}
     pagination.setdefault("posts_per_page", 10)
     data["pagination"] = pagination
@@ -252,7 +252,7 @@ def load_config() -> Tuple[Dict[str, Any], List[Lang]]:
 
 
 def rel_url(from_dir: Path, to_dir: Path) -> str:
-    """Retourne une URL relative vers un dossier (avec trailing slash)."""
+    """Return a relative URL to a directory (with a trailing slash)."""
     rel = Path(os.path.relpath(str(to_dir), str(from_dir))).as_posix()
     if rel == ".":
         return "./"
@@ -272,14 +272,14 @@ def compute_rel(depth: int) -> str:
 
 
 def resolve_asset_path(value: str, default_name: str) -> Path:
-    """Résout un asset depuis le projet consommateur.
+    """Resolve an asset from the consumer project.
 
-    Formats acceptés:
-      - chemin absolu: /srv/blog/assets/style.css
-      - chemin relatif à config.yaml: assets/style.css
-      - ancien format: style.css (résolu dans <projet>/assets/)
+    Accepted formats:
+      - absolute path: /srv/blog/assets/style.css
+      - path relative to config.yaml: assets/style.css
+      - legacy format: style.css (resolved in <project>/assets/)
 
-    Les variables d'environnement et ``~`` sont développés.
+    Environment variables and ``~`` are expanded.
     """
     raw = str(value or default_name).strip()
     raw = os.path.expandvars(os.path.expanduser(raw))
@@ -292,7 +292,7 @@ def resolve_asset_path(value: str, default_name: str) -> Path:
     if relative_to_project.exists() or len(path.parts) > 1:
         return relative_to_project
 
-    # Compatibilité avec l'ancien YAML: style: "style8.css"
+    # Compatibility with the legacy YAML format: style: "style8.css"
     return (ASSETS_SRC_DIR / path).resolve()
 
 
@@ -319,13 +319,13 @@ def copy_static_assets(style: str = "style.css", theme: str = "theme.js") -> Non
 
 
 def resolve_site_url(site: Dict[str, Any]) -> str:
-    """Retourne l'URL publique du site, sans slash final.
+    """Return the public site URL without a trailing slash.
 
-    Priorité:
+    Priority:
       1. site.url
-      2. site.base_url (compatibilité)
-      3. variable d'environnement SITE_URL
-      4. fichier CNAME à la racine du projet (GitHub Pages)
+      2. site.base_url (compatibility)
+      3. SITE_URL environment variable
+      4. CNAME file at the project root (GitHub Pages)
     """
     raw = str(site.get("url") or site.get("base_url") or os.environ.get("SITE_URL") or "").strip()
     if not raw:
@@ -343,13 +343,13 @@ def resolve_site_url(site: Dict[str, Any]) -> str:
 
 
 def absolute_url(site_url: str, path: str = "") -> str:
-    """Construit une URL absolue publique à partir d'un chemin du site."""
+    """Build an absolute public URL from a site path."""
     path = str(path or "").strip("/")
     return f"{site_url}/{path}/" if path else f"{site_url}/"
 
 
 def single_post_image_url(html: str, post_url: str) -> str:
-    """Retourne l'image de l'article s'il contient exactement une balise <img>."""
+    """Return the article image if it contains exactly one <img> tag."""
     if not post_url:
         return ""
     sources = [src.strip() for src in IMG_SRC_RE.findall(html) if src.strip()]
@@ -381,7 +381,7 @@ def page_absolute_url(site_url: str, lang_code: str, page_num: int = 1) -> str:
 
 
 def write_sitemap(site_url: str, languages: List[Lang], posts: List[Post]) -> None:
-    """Génère un sitemap XML avec alternates hreflang pour les traductions."""
+    """Generate an XML sitemap with hreflang alternates for translations."""
     sitemap_ns = "http://www.sitemaps.org/schemas/sitemap/0.9"
     xhtml_ns = "http://www.w3.org/1999/xhtml"
     ET.register_namespace("", sitemap_ns)
@@ -393,7 +393,7 @@ def write_sitemap(site_url: str, languages: List[Lang], posts: List[Post]) -> No
         dates = [p.date for p in posts if p.lang == lang.code and p.listed]
         latest_by_lang[lang.code] = max(dates) if dates else None
 
-    # Pages d'accueil par langue.
+    # Home pages by language.
     for lang in languages:
         entry = ET.SubElement(urlset, ET.QName(sitemap_ns, "url"))
         ET.SubElement(entry, ET.QName(sitemap_ns, "loc")).text = absolute_url(site_url, lang_root_path(lang.code))
@@ -434,7 +434,7 @@ def write_sitemap(site_url: str, languages: List[Lang], posts: List[Post]) -> No
 
 
 def write_rss_feed(site_url: str, site: Dict[str, Any], lang: Lang, posts: List[Post], max_items: int) -> None:
-    """Génère un flux RSS 2.0 pour une langue."""
+    """Generate an RSS 2.0 feed for one language."""
     atom_ns = "http://www.w3.org/2005/Atom"
     ET.register_namespace("atom", atom_ns)
 
@@ -568,7 +568,7 @@ def build() -> None:
     for lc in posts_by_lang:
         posts_by_lang[lc].sort(key=lambda x: x.date, reverse=True)
 
-    # Pré-calcul pagination par langue (pour le sélecteur de langue sur les pages paginées)
+    # Precompute pagination by language (for the language switcher on paginated pages)
     index_posts_by_lang: Dict[str, List[Post]] = {
         lc: [pp for pp in posts_by_lang.get(lc, []) if bool(getattr(pp, "listed", True))]
         for lc in [l.code for l in languages]
@@ -579,7 +579,7 @@ def build() -> None:
     }
 
 
-    # Pré-calcul: retrouver un post par (key, lang) pour le menu
+    # Precompute post lookup by (key, lang) for the menu
     post_dir_by_key_lang: Dict[tuple, Path] = {}
     post_slug_by_key_lang: Dict[tuple, str] = {}
     for p in posts:
@@ -591,10 +591,10 @@ def build() -> None:
         post_slug_by_key_lang[(p.key, p.lang)] = p.slug
 
     def resolve_menu_for_page(out_dir: Path, lang_code: str, current_slug: Optional[str], is_index: bool) -> List[dict]:
-        """Construit un menu 'prêt à afficher' (href relatifs + item actif).
-        Supporte:
-          - href: (http/https, mailto, /, /en/, chemins internes)
-          - post_key / post: référence à un post par sa key (content/posts/<key>/...).
+        """Build a display-ready menu (relative hrefs + active item).
+        Supports:
+          - href: (http/https, mailto, /, /en/, internal paths)
+          - post_key / post: reference to a post by its key (content/posts/<key>/...).
         """
         home_dir = DIST_DIR if lang_code == "fr" else (DIST_DIR / "en")
         view = []
@@ -606,10 +606,10 @@ def build() -> None:
             href = href_cfg
 
             if post_key:
-                # lien vers un article identifié par sa key
+                # Link to an article identified by its key
                 target_dir = post_dir_by_key_lang.get((str(post_key), lang_code))
                 if target_dir is None:
-                    # fallback: première langue dispo
+                    # Fallback: first available language
                     target_dir = post_dir_by_key_lang.get((str(post_key), "fr")) or post_dir_by_key_lang.get((str(post_key), "en"))
                 if target_dir is not None:
                     href = rel_url(out_dir, target_dir)
@@ -619,7 +619,7 @@ def build() -> None:
                 href = rel_url(out_dir, target_dir)
 
             elif isinstance(href_cfg, str) and href_cfg.startswith("/") and not (href_cfg.startswith("mailto:") or href_cfg.startswith("http://") or href_cfg.startswith("https://")):
-                # chemin interne type "/slug/" ou "/en/slug/"
+                # Internal path such as "/slug/" or "/en/slug/"
                 path = href_cfg.strip("/")
                 if path.startswith("en/"):
                     target_dir = DIST_DIR / "en" / path[len("en/"):]
@@ -635,7 +635,7 @@ def build() -> None:
             # Active?
             is_active = False
             if post_key and current_slug:
-                # si la page courante est ce post (par slug)
+                # If the current page is this post (by slug)
                 slug_here = current_slug
                 slug_target = None
                 if target_dir is not None:
@@ -643,7 +643,7 @@ def build() -> None:
                     slug_target = target_dir.name
                 is_active = (slug_target == slug_here)
             elif is_index and target_dir is not None and (target_dir == home_dir or target_dir == DIST_DIR or target_dir == (DIST_DIR / "en")):
-                # pages d'accueil/pagination -> "Blog" actif (ou l'item qui pointe vers la home)
+                # Home/pagination pages -> "Blog" active (or the item pointing to the home page)
                 is_active = True
             elif target_dir is not None and target_dir == out_dir:
                 is_active = True
@@ -652,13 +652,13 @@ def build() -> None:
         return view
 
     def resolve_lang_links_for_index(out_dir: Path, page_num: int) -> Dict[str, str]:
-        """Retourne, pour chaque langue, le lien vers la "même" page d'index si elle existe.
-        Sinon, fallback vers la home de la langue."""
+        """Return, for each language, the link to the same index page if it exists.
+        Otherwise, fall back to that language's home page."""
         links: Dict[str, str] = {}
         for l in languages:
             lc = l.code
             lang_root = DIST_DIR if lc == "fr" else (DIST_DIR / lc)
-            # Même numéro de page si possible
+            # Same page number when possible
             if page_num <= total_pages_by_lang.get(lc, 1):
                 target_dir = lang_root if page_num == 1 else (lang_root / "page" / str(page_num))
             else:
@@ -667,8 +667,8 @@ def build() -> None:
         return links
 
     def resolve_lang_links_for_post(out_dir: Path, post_key: str) -> Dict[str, str]:
-        """Retourne, pour chaque langue, le lien vers la traduction du post si elle existe.
-        Sinon, fallback vers la home de la langue."""
+        """Return, for each language, the link to the post translation if it exists.
+        Otherwise, fall back to that language's home page."""
         links: Dict[str, str] = {}
         for l in languages:
             lc = l.code
@@ -679,7 +679,7 @@ def build() -> None:
             links[lc] = rel_url(out_dir, target_dir) + "index.html"
         return links
 
-    # Render indexes (avec pagination)
+    # Render indexes (with pagination)
     for lang in languages:
         lc = lang.code
         lang_posts = posts_by_lang.get(lc, [])
@@ -691,26 +691,26 @@ def build() -> None:
 
         total_pages = max(1, (len(index_posts) + posts_per_page - 1) // posts_per_page)
         for page_num in range(1, total_pages + 1):
-            # Dossier de sortie pour cette page
+            # Output directory for this page
             out_dir = lang_root if page_num == 1 else (lang_root / "page" / str(page_num))
             out_dir.mkdir(parents=True, exist_ok=True)
 
-            # Profondeur pour atteindre dist/assets
+            # Depth needed to reach dist/assets
             # fr: index=0, page/N=2 ; en: index=1, page/N=3
             depth_to_dist = 0 if lc == "fr" else 1
             if page_num > 1:
                 depth_to_dist += 2
             rel = compute_rel(depth_to_dist)
 
-            # Lien "Accueil" (dans le header)
+            # "Home" link (in the header)
             home_href = "./index.html" if page_num == 1 else rel_url(out_dir, lang_root) + "index.html"
 
-            # Slice des posts affichés
+            # Slice of displayed posts
             start = (page_num - 1) * posts_per_page
             end = start + posts_per_page
             page_posts = index_posts[start:end]
 
-            # URL relative depuis la page d'index vers les posts (dans le dossier de la langue)
+            # Relative URL from the index page to posts (inside the language directory)
             depth_in_lang = 0 if page_num == 1 else 2
             post_prefix = compute_rel(depth_in_lang)
             view_posts = []
@@ -841,7 +841,7 @@ def build() -> None:
         )
         (out_dir / "index.html").write_text(post_html, encoding="utf-8")
 
-    # Page 404 unique à la racine, adaptée aux hébergeurs statiques.
+    # Single root-level 404 page, suitable for static hosting providers.
     not_found_html = env.get_template("404.html").render(
         page_title=f"404 — {site['title']}",
         site=site,

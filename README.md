@@ -1,51 +1,50 @@
 # Static blog generator (FR/EN)
 
-Ce dépôt contient uniquement le moteur réutilisable :
+This repository contains only the reusable generator engine:
 
 - `build.py`
 - `templates/`
 - `requirements.txt`
 
-Le générateur produit aussi les fichiers SEO/RSS lorsque l'URL publique du site est connue :
+The generator also produces SEO/RSS files when the public site URL is known:
 
 - `dist/sitemap.xml`
 - `dist/robots.txt`
 - `dist/rss.xml` (FR)
 - `dist/en/rss.xml` (EN)
-- balises `canonical`, `hreflang`, Open Graph et découverte RSS dans les pages HTML
+- `canonical`, `hreflang`, Open Graph, and RSS discovery tags in HTML pages
 
-Le contenu, la configuration YAML, les assets du site et le workflow GitHub Actions restent dans le dépôt consommateur.
+The content, YAML configuration, site assets, and GitHub Actions workflow remain in the consumer repository.
 
-## Créer une dépôt consommateur
+## Create a consumer repository
 
-Exemple ici [https://github.com/sfonteneau/blog.git](https://github.com/sfonteneau/blog.git)
+Example: [https://github.com/sfonteneau/blog.git](https://github.com/sfonteneau/blog.git)
 
+## SEO, sitemap, and RSS feeds
 
-## SEO, sitemap et flux RSS
-
-Pour générer des URLs absolues valides dans le sitemap et les flux RSS, indiquez l'URL publique du site dans le `config.yaml` du projet consommateur :
+To generate valid absolute URLs in the sitemap and RSS feeds, set the public site URL in the consumer project's `config.yaml`:
 
 ```yaml
 site:
-  title: "Mon Blog"
+  title: "My Blog"
   tagline: "..."
   author: "..."
   url: "https://example.com"
 
-# Optionnel : 20 articles par flux par défaut
+# Optional: defaults to 20 articles per feed
 rss:
   enabled: true
   items: 20
 
-# Optionnel : activé par défaut
+# Optional: enabled by default
 sitemap:
   enabled: true
 ```
 
-`site.base_url` est aussi accepté pour compatibilité. À défaut, le générateur utilise la variable d'environnement `SITE_URL`, puis un éventuel fichier `CNAME` à la racine du projet. Sans URL publique, le build continue mais affiche un avertissement et n'écrit pas le sitemap/RSS afin d'éviter des fichiers SEO avec des URLs invalides.
+`site.base_url` is also accepted for compatibility. If it is not set, the generator uses the `SITE_URL` environment variable, then an optional `CNAME` file at the project root. Without a public URL, the build continues but prints a warning and does not write the sitemap/RSS files, preventing SEO files with invalid URLs.
 
-Pour les articles qui contiennent exactement une image, cette image est utilisée automatiquement comme `og:image` (et dans le JSON-LD). Sinon, vous pouvez ajouter `content/og-image.jpg` comme image de secours globale ; elle sera copiée automatiquement vers `dist/og-image.jpg` lorsque l'URL publique du site est connue.
+For articles containing exactly one image, that image is automatically used as `og:image` and in the JSON-LD. Otherwise, you can add `content/og-image.jpg` as a global fallback image; it is automatically copied to `dist/og-image.jpg` when the public site URL is known.
 
-### JSON-LD et page 404
+### JSON-LD and 404 page
 
-Le build ajoute automatiquement un JSON-LD `BlogPosting` aux pages d'article et génère `dist/404.html`. Aucune configuration supplémentaire n'est nécessaire.
+The build automatically adds `BlogPosting` JSON-LD to article pages and generates `dist/404.html`. No additional configuration is required.
