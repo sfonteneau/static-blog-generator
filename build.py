@@ -38,6 +38,10 @@ Sortie:
   dist/assets/style.css
   dist/assets/theme.js
   dist/assets/img/<fichier.fingerprint.ext>
+  dist/sitemap.xml       (si site.url est configuré)
+  dist/robots.txt        (si site.url est configuré)
+  dist/rss.xml           (FR, si site.url est configuré)
+  dist/en/rss.xml        (EN, si site.url est configuré)
 
 Commande depuis la racine du projet consommateur:
   python generator/build.py build --config config.yaml
@@ -52,10 +56,12 @@ import re
 import shutil
 import sys
 from dataclasses import dataclass
-from datetime import datetime, date
+from datetime import datetime, date, time, timezone
 from pathlib import Path
+from email.utils import format_datetime
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import unquote
+import xml.etree.ElementTree as ET
 
 import yaml
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -301,10 +307,174 @@ def copy_static_assets(style: str = "style.css", theme: str = "theme.js") -> Non
     shutil.copy2(theme_src, ASSETS_DIR / "theme.js")
 
 
+def resolve_site_url(site: Dict[str, Any]) -> str:
+    """Retourne l'URL publique du site, sans slash final.
+
+    Priorité:
+      1. site.url
+      2. site.base_url (compatibilité)
+      3. variable d'environnement SITE_URL
+      4. fichier CNAME à la racine du projet (GitHub Pages)
+    """
+    raw = str(site.get("url") or site.get("base_url") or os.environ.get("SITE_URL") or "").strip()
+    if not raw:
+        cname = PROJECT_ROOT / "CNAME"
+        if cname.exists() and cname.is_file():
+            host = read_text(cname).strip().splitlines()[0].strip()
+            if host:
+                raw = host if "://" in host else f"https://{host}"
+
+    if not raw:
+        return ""
+    if not re.match(r"^https?://", raw, re.IGNORECASE):
+        raw = "https://" + raw
+    return raw.rstrip("/")
+
+
+def absolute_url(site_url: str, path: str = "") -> str:
+    """Construit une URL absolue publique à partir d'un chemin du site."""
+    path = str(path or "").strip("/")
+    return f"{site_url}/{path}/" if path else f"{site_url}/"
+
+
+def lang_root_path(lang_code: str) -> str:
+    return "" if lang_code == "fr" else lang_code
+
+
+def post_public_path(post: Post) -> str:
+    root = lang_root_path(post.lang)
+    return f"{root}/{post.slug}".strip("/")
+
+
+def rss_public_path(lang_code: str) -> str:
+    root = lang_root_path(lang_code)
+    return f"{root}/rss.xml".strip("/")
+
+
+def page_absolute_url(site_url: str, lang_code: str, page_num: int = 1) -> str:
+    root = lang_root_path(lang_code)
+    if page_num <= 1:
+        return absolute_url(site_url, root)
+    path = f"{root}/page/{page_num}" if root else f"page/{page_num}"
+    return absolute_url(site_url, path)
+
+
+def write_sitemap(site_url: str, languages: List[Lang], posts: List[Post]) -> None:
+    """Génère un sitemap XML avec alternates hreflang pour les traductions."""
+    sitemap_ns = "http://www.sitemaps.org/schemas/sitemap/0.9"
+    xhtml_ns = "http://www.w3.org/1999/xhtml"
+    ET.register_namespace("", sitemap_ns)
+    ET.register_namespace("xhtml", xhtml_ns)
+
+    urlset = ET.Element(ET.QName(sitemap_ns, "urlset"))
+    latest_by_lang: Dict[str, Optional[date]] = {}
+    for lang in languages:
+        dates = [p.date for p in posts if p.lang == lang.code and p.listed]
+        latest_by_lang[lang.code] = max(dates) if dates else None
+
+    # Pages d'accueil par langue.
+    for lang in languages:
+        entry = ET.SubElement(urlset, ET.QName(sitemap_ns, "url"))
+        ET.SubElement(entry, ET.QName(sitemap_ns, "loc")).text = absolute_url(site_url, lang_root_path(lang.code))
+        if latest_by_lang.get(lang.code):
+            ET.SubElement(entry, ET.QName(sitemap_ns, "lastmod")).text = latest_by_lang[lang.code].isoformat()
+        for alt in languages:
+            ET.SubElement(
+                entry,
+                ET.QName(xhtml_ns, "link"),
+                {
+                    "rel": "alternate",
+                    "hreflang": alt.code,
+                    "href": absolute_url(site_url, lang_root_path(alt.code)),
+                },
+            )
+
+    by_key_lang = {(p.key, p.lang): p for p in posts}
+    for p in sorted(posts, key=lambda item: (item.date, item.lang, item.slug), reverse=True):
+        entry = ET.SubElement(urlset, ET.QName(sitemap_ns, "url"))
+        ET.SubElement(entry, ET.QName(sitemap_ns, "loc")).text = absolute_url(site_url, post_public_path(p))
+        ET.SubElement(entry, ET.QName(sitemap_ns, "lastmod")).text = p.date_iso
+        for alt in languages:
+            translated = by_key_lang.get((p.key, alt.code))
+            if translated is not None:
+                ET.SubElement(
+                    entry,
+                    ET.QName(xhtml_ns, "link"),
+                    {
+                        "rel": "alternate",
+                        "hreflang": alt.code,
+                        "href": absolute_url(site_url, post_public_path(translated)),
+                    },
+                )
+
+    tree = ET.ElementTree(urlset)
+    ET.indent(tree, space="  ")
+    tree.write(DIST_DIR / "sitemap.xml", encoding="utf-8", xml_declaration=True)
+
+
+def write_rss_feed(site_url: str, site: Dict[str, Any], lang: Lang, posts: List[Post], max_items: int) -> None:
+    """Génère un flux RSS 2.0 pour une langue."""
+    atom_ns = "http://www.w3.org/2005/Atom"
+    ET.register_namespace("atom", atom_ns)
+
+    rss = ET.Element("rss", {"version": "2.0"})
+    channel = ET.SubElement(rss, "channel")
+    ET.SubElement(channel, "title").text = str(site.get("title", ""))
+    ET.SubElement(channel, "link").text = absolute_url(site_url, lang_root_path(lang.code))
+    description = str(site.get("tagline", "") or site.get("title", ""))
+    ET.SubElement(channel, "description").text = description
+    ET.SubElement(channel, "language").text = lang.code
+    ET.SubElement(
+        channel,
+        ET.QName(atom_ns, "link"),
+        {
+            "href": f"{site_url}/{rss_public_path(lang.code)}",
+            "rel": "self",
+            "type": "application/rss+xml",
+        },
+    )
+
+    feed_posts = [p for p in posts if p.lang == lang.code and p.listed][:max_items]
+    if feed_posts:
+        latest_dt = datetime.combine(feed_posts[0].date, time.min, tzinfo=timezone.utc)
+        ET.SubElement(channel, "lastBuildDate").text = format_datetime(latest_dt)
+
+    for p in feed_posts:
+        item = ET.SubElement(channel, "item")
+        url = absolute_url(site_url, post_public_path(p))
+        ET.SubElement(item, "title").text = p.title
+        ET.SubElement(item, "link").text = url
+        ET.SubElement(item, "guid", {"isPermaLink": "true"}).text = url
+        published = datetime.combine(p.date, time.min, tzinfo=timezone.utc)
+        ET.SubElement(item, "pubDate").text = format_datetime(published)
+        ET.SubElement(item, "description").text = p.excerpt
+
+    out_path = DIST_DIR / rss_public_path(lang.code)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    tree = ET.ElementTree(rss)
+    ET.indent(tree, space="  ")
+    tree.write(out_path, encoding="utf-8", xml_declaration=True)
+
+
+def write_robots(site_url: str, sitemap_enabled: bool = True) -> None:
+    content = "User-agent: *\nAllow: /\n"
+    if sitemap_enabled:
+        content += f"\nSitemap: {site_url}/sitemap.xml\n"
+    (DIST_DIR / "robots.txt").write_text(content, encoding="utf-8")
+
+
 def build() -> None:
     cfg, languages = load_config()
     menu = cfg.get("menu", [])
     site = cfg["site"]
+    site_url = resolve_site_url(site)
+    rss_cfg = cfg.get("rss", {}) if isinstance(cfg.get("rss", {}), dict) else {}
+    rss_enabled = bool(rss_cfg.get("enabled", True))
+    rss_items = int(rss_cfg.get("items", 20) or 20)
+    if rss_items <= 0:
+        rss_items = 20
+    sitemap_cfg = cfg.get("sitemap", {}) if isinstance(cfg.get("sitemap", {}), dict) else {}
+    sitemap_enabled = bool(sitemap_cfg.get("enabled", True))
     posts_per_page = int(cfg.get("pagination", {}).get("posts_per_page", 10) or 10)
     if posts_per_page <= 0:
         posts_per_page = 10
@@ -568,6 +738,13 @@ def build() -> None:
                 lang_links=resolve_lang_links_for_index(out_dir, page_num),
                 lang={"code": lang.code, "label": lang.label, "path": lang.path},
                 home_href=home_href,
+                meta_description=site.get("tagline", ""),
+                canonical_url=page_absolute_url(site_url, lc, page_num) if site_url else "",
+                rss_url=(f"{site_url}/{rss_public_path(lc)}" if site_url and rss_enabled else ""),
+                hreflang_urls=(
+                    {l.code: page_absolute_url(site_url, l.code, page_num if page_num <= total_pages_by_lang.get(l.code, 1) else 1) for l in languages}
+                    if site_url else {}
+                ),
             )
             (out_dir / "index.html").write_text(index_html, encoding="utf-8")
 
@@ -606,8 +783,33 @@ def build() -> None:
             lang_links=resolve_lang_links_for_post(out_dir, p.key),
             lang=lang_obj,
             home_href=home_href,
+            meta_description=p.excerpt,
+            canonical_url=absolute_url(site_url, post_public_path(p)) if site_url else "",
+            rss_url=(f"{site_url}/{rss_public_path(p.lang)}" if site_url and rss_enabled else ""),
+            hreflang_urls=(
+                {
+                    l.code: absolute_url(site_url, post_public_path(next(pp for pp in posts if pp.key == p.key and pp.lang == l.code)))
+                    for l in languages
+                    if any(pp.key == p.key and pp.lang == l.code for pp in posts)
+                }
+                if site_url else {}
+            ),
         )
         (out_dir / "index.html").write_text(post_html, encoding="utf-8")
+
+    if site_url:
+        if sitemap_enabled:
+            write_sitemap(site_url, languages, posts)
+        if rss_enabled:
+            for lang in languages:
+                write_rss_feed(site_url, site, lang, posts_by_lang.get(lang.code, []), rss_items)
+        write_robots(site_url, sitemap_enabled=sitemap_enabled)
+    elif sitemap_enabled or rss_enabled:
+        print(
+            "⚠️  SEO: site.url absent. sitemap.xml et RSS non générés. "
+            "Ajoutez site.url dans config.yaml (ou définissez SITE_URL).",
+            file=sys.stderr,
+        )
 
     print(f"✅ Build terminé: {DIST_DIR}")
 
