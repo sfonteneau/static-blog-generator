@@ -42,6 +42,7 @@ Sortie:
   dist/robots.txt        (si site.url est configuré)
   dist/rss.xml           (FR, si site.url est configuré)
   dist/en/rss.xml        (EN, si site.url est configuré)
+  dist/404.html           (toujours généré)
 
 Commande depuis la racine du projet consommateur:
   python generator/build.py build --config config.yaml
@@ -51,6 +52,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -60,7 +62,7 @@ from datetime import datetime, date, time, timezone
 from pathlib import Path
 from email.utils import format_datetime
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import unquote
+from urllib.parse import unquote, urljoin
 import xml.etree.ElementTree as ET
 
 import yaml
@@ -133,6 +135,7 @@ class Post:
 FRONT_MATTER_RE = re.compile(r"^\s*---\s*\n(.*?)\n---\s*\n(.*)$", re.DOTALL)
 IMG_MD_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 IMG_HTML_RE = re.compile(r'(<img\b[^>]*\bsrc=["\'])([^"\']+)(["\'])', re.IGNORECASE)
+IMG_SRC_RE = re.compile(r'<img\b[^>]*\bsrc=["\']([^"\']+)["\']', re.IGNORECASE)
 
 
 def ensure_clean_dir(path: Path) -> None:
@@ -300,6 +303,10 @@ def copy_static_assets(style: str = "style.css", theme: str = "theme.js") -> Non
     if favicon_src.is_file():
         shutil.copy2(favicon_src, DIST_DIR / "favicon.ico")
 
+    og_image_src = POSTS_DIR / "og-image.jpg"
+    if og_image_src.is_file():
+        shutil.copy2(og_image_src, DIST_DIR / "og-image.jpg")
+
     style_src = resolve_asset_path(style, "style.css")
     if not style_src.exists() or not style_src.is_file():
         raise FileNotFoundError(f"Fichier CSS manquant: {style_src}")
@@ -339,6 +346,16 @@ def absolute_url(site_url: str, path: str = "") -> str:
     """Construit une URL absolue publique à partir d'un chemin du site."""
     path = str(path or "").strip("/")
     return f"{site_url}/{path}/" if path else f"{site_url}/"
+
+
+def single_post_image_url(html: str, post_url: str) -> str:
+    """Retourne l'image de l'article s'il contient exactement une balise <img>."""
+    if not post_url:
+        return ""
+    sources = [src.strip() for src in IMG_SRC_RE.findall(html) if src.strip()]
+    if len(sources) != 1 or sources[0].lower().startswith("data:"):
+        return ""
+    return urljoin(post_url, sources[0])
 
 
 def lang_root_path(lang_code: str) -> str:
@@ -485,6 +502,7 @@ def build() -> None:
 
     ensure_clean_dir(DIST_DIR)
     copy_static_assets(cfg.get("style", "style.css"), cfg.get("theme", "theme.js"))
+    og_image_url = f"{site_url}/og-image.jpg" if site_url and (POSTS_DIR / "og-image.jpg").is_file() else ""
 
     env = Environment(
         loader=FileSystemLoader(str(TEMPLATES_DIR)),
@@ -744,6 +762,7 @@ def build() -> None:
                 home_href=home_href,
                 meta_description=site.get("tagline", ""),
                 canonical_url=page_absolute_url(site_url, lc, page_num) if site_url else "",
+                og_image_url=og_image_url,
                 rss_url=(f"{site_url}/{rss_public_path(lc)}" if site_url and rss_enabled else ""),
                 hreflang_urls=(
                     {l.code: page_absolute_url(site_url, l.code, page_num if page_num <= total_pages_by_lang.get(l.code, 1) else 1) for l in languages}
@@ -767,6 +786,24 @@ def build() -> None:
             home_href = "../index.html"
             lang_obj = {"code": "en", "label": "EN", "path": "/en/"}
 
+        post_url = absolute_url(site_url, post_public_path(p)) if site_url else ""
+        article_og_image_url = single_post_image_url(p.html, post_url) or og_image_url
+        json_ld: Dict[str, Any] = {
+            "@context": "https://schema.org",
+            "@type": "BlogPosting",
+            "headline": p.title,
+            "description": p.excerpt,
+            "datePublished": p.date_iso,
+            "inLanguage": p.lang,
+        }
+        if post_url:
+            json_ld["url"] = post_url
+            json_ld["mainEntityOfPage"] = {"@type": "WebPage", "@id": post_url}
+        if site.get("author"):
+            json_ld["author"] = {"@type": "Person", "name": str(site["author"])}
+        if article_og_image_url:
+            json_ld["image"] = article_og_image_url
+
         post_html = env.get_template("post.html").render(
             page_title=f"{p.title} — {site['title']}",
             site=site,
@@ -788,7 +825,10 @@ def build() -> None:
             lang=lang_obj,
             home_href=home_href,
             meta_description=p.excerpt,
-            canonical_url=absolute_url(site_url, post_public_path(p)) if site_url else "",
+            canonical_url=post_url,
+            og_type="article",
+            json_ld=json.dumps(json_ld, ensure_ascii=False, separators=(",", ":")),
+            og_image_url=article_og_image_url,
             rss_url=(f"{site_url}/{rss_public_path(p.lang)}" if site_url and rss_enabled else ""),
             hreflang_urls=(
                 {
@@ -800,6 +840,25 @@ def build() -> None:
             ),
         )
         (out_dir / "index.html").write_text(post_html, encoding="utf-8")
+
+    # Page 404 unique à la racine, adaptée aux hébergeurs statiques.
+    not_found_html = env.get_template("404.html").render(
+        page_title=f"404 — {site['title']}",
+        site=site,
+        menu=[],
+        rel=".",
+        now_year=now_year,
+        languages=[],
+        lang_links={},
+        lang={"code": "fr", "label": "FR", "path": "/"},
+        home_href="./index.html",
+        meta_description="Page introuvable",
+        canonical_url="",
+        og_image_url=og_image_url,
+        rss_url="",
+        hreflang_urls={},
+    )
+    (DIST_DIR / "404.html").write_text(not_found_html, encoding="utf-8")
 
     if site_url:
         if sitemap_enabled:

@@ -12,7 +12,7 @@ Le générateur produit aussi les fichiers SEO/RSS lorsque l'URL publique du sit
 - `dist/robots.txt`
 - `dist/rss.xml` (FR)
 - `dist/en/rss.xml` (EN)
-- balises `canonical`, `hreflang` et découverte RSS dans les pages HTML
+- balises `canonical`, `hreflang`, Open Graph et découverte RSS dans les pages HTML
 
 Le contenu, la configuration YAML, les assets du site et le workflow GitHub Actions restent dans le dépôt consommateur.
 
@@ -43,3 +43,9 @@ sitemap:
 ```
 
 `site.base_url` est aussi accepté pour compatibilité. À défaut, le générateur utilise la variable d'environnement `SITE_URL`, puis un éventuel fichier `CNAME` à la racine du projet. Sans URL publique, le build continue mais affiche un avertissement et n'écrit pas le sitemap/RSS afin d'éviter des fichiers SEO avec des URLs invalides.
+
+Pour les articles qui contiennent exactement une image, cette image est utilisée automatiquement comme `og:image` (et dans le JSON-LD). Sinon, vous pouvez ajouter `content/og-image.jpg` comme image de secours globale ; elle sera copiée automatiquement vers `dist/og-image.jpg` lorsque l'URL publique du site est connue.
+
+### JSON-LD et page 404
+
+Le build ajoute automatiquement un JSON-LD `BlogPosting` aux pages d'article et génère `dist/404.html`. Aucune configuration supplémentaire n'est nécessaire.
