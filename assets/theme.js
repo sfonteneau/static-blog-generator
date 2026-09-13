@@ -1,7 +1,24 @@
 (function(){
   const STORAGE_KEY = "theme";
   const root = document.documentElement;
+  const isFrench = (root.lang || "fr").toLowerCase().startsWith("fr");
   root.classList.add("js");
+
+  function themeButton(){
+    return document.querySelector(".theme-toggle");
+  }
+
+  function syncThemeButton(){
+    const btn = themeButton();
+    if(!btn) return;
+    const current = root.getAttribute("data-theme") || "dark";
+    const dark = current === "dark";
+    btn.setAttribute("aria-pressed", dark ? "true" : "false");
+    const label = btn.querySelector(".theme-toggle__label");
+    if(label) label.textContent = isFrench ? "Mode sombre" : "Dark mode";
+    const icon = btn.querySelector(".theme-toggle__icon");
+    if(icon) icon.textContent = dark ? "🌙" : "☀️";
+  }
 
   function apply(theme){
     if(theme === "light" || theme === "dark"){
@@ -9,130 +26,131 @@
     } else {
       root.removeAttribute("data-theme");
     }
+    syncThemeButton();
   }
 
-  // Initial: saved preference, else system preference
-  const saved = localStorage.getItem(STORAGE_KEY);
+  let saved = null;
+  try { saved = localStorage.getItem(STORAGE_KEY); } catch (_) {}
   if(saved){
     apply(saved);
-  } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches){
+  } else if(window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches){
     apply("light");
   } else {
     apply("dark");
   }
 
-  function toggle(){
+  function toggleTheme(){
     const current = root.getAttribute("data-theme") || "dark";
     const next = current === "dark" ? "light" : "dark";
     apply(next);
-    localStorage.setItem(STORAGE_KEY, next);
+    try { localStorage.setItem(STORAGE_KEY, next); } catch (_) {}
   }
 
   document.addEventListener("click", function(e){
     const btn = e.target.closest && e.target.closest(".theme-toggle");
-    if(btn) toggle();
+    if(btn) toggleTheme();
   });
 
+  function initMenu(){
+    const header = document.querySelector(".site-header");
+    if(!header) return;
+    const nav = header.querySelector(".nav");
+    if(!nav) return;
 
-function initMenu(){
-  const header = document.querySelector(".site-header");
-  if(!header) return;
-  const nav = header.querySelector(".nav");
-  if(!nav) return;
+    if(!nav.id) nav.id = "site-nav";
+    const headerRight = header.querySelector(".header-right") || header.querySelector(".container") || header;
+    const mq = window.matchMedia("(min-width: 821px)");
 
-  // Ensure the nav has an id so aria-controls works
-  if(!nav.id) nav.id = "site-nav";
-
-  // Find a spot for the toggle button
-  const headerRight = header.querySelector(".header-right") || header.querySelector(".container") || header;
-
-  let btn = header.querySelector(".menu-toggle");
-  if(!btn){
-    btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "menu-toggle";
-    btn.setAttribute("aria-expanded", "false");
-    btn.setAttribute("aria-controls", nav.id);
-    btn.innerHTML = '<span aria-hidden="true">☰</span><span>Menu</span>';
-    // Put it at the start of the right-side controls
-    if(headerRight.firstChild){
-      headerRight.insertBefore(btn, headerRight.firstChild);
+    let btn = header.querySelector(".menu-toggle");
+    if(!btn){
+      btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "menu-toggle";
+      btn.setAttribute("aria-expanded", "false");
+      btn.setAttribute("aria-controls", nav.id);
+      btn.innerHTML = '<span aria-hidden="true">☰</span><span class="menu-toggle__label"></span>';
+      if(headerRight.firstChild){
+        headerRight.insertBefore(btn, headerRight.firstChild);
+      } else {
+        headerRight.appendChild(btn);
+      }
     } else {
-      headerRight.appendChild(btn);
+      btn.setAttribute("aria-controls", nav.id);
     }
-  } else {
-    btn.setAttribute("aria-controls", nav.id);
+
+    function syncMenuButton(open){
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      btn.setAttribute("aria-label", open ? (isFrench ? "Fermer le menu" : "Close menu") : (isFrench ? "Ouvrir le menu" : "Open menu"));
+      const label = btn.querySelector(".menu-toggle__label");
+      if(label) label.textContent = open ? (isFrench ? "Fermer" : "Close") : "Menu";
+    }
+
+    const syncHeaderHeight = () => {
+      const h = header.offsetHeight || 64;
+      root.style.setProperty("--header-h", h + "px");
+    };
+
+    const close = (restoreFocus) => {
+      const wasOpen = nav.classList.contains("is-open");
+      nav.classList.remove("is-open");
+      document.body.classList.remove("menu-open");
+      syncMenuButton(false);
+      if(restoreFocus && wasOpen) btn.focus();
+    };
+
+    const toggle = () => {
+      syncHeaderHeight();
+      const open = nav.classList.toggle("is-open");
+      document.body.classList.toggle("menu-open", open);
+      syncMenuButton(open);
+
+      if(open){
+        const top = header.getBoundingClientRect().top;
+        if(top < 0){
+          window.scrollTo({top: window.scrollY + top, behavior: "auto"});
+        }
+      }
+    };
+
+    syncHeaderHeight();
+    syncMenuButton(false);
+    btn.addEventListener("click", toggle);
+
+    document.addEventListener("keydown", (e) => {
+      if(e.key === "Escape") close(true);
+    });
+
+    nav.addEventListener("click", (e) => {
+      const a = e.target.closest("a");
+      if(a) close(false);
+    });
+
+    const onChange = (e) => { if(e.matches) close(false); };
+    if(mq.addEventListener) mq.addEventListener("change", onChange);
+    else mq.addListener(onChange);
   }
 
-  const syncHeaderHeight = () => {
-    // Keep the overlay menu aligned just under the sticky header row
-    const h = header.offsetHeight || 64;
-    root.style.setProperty("--header-h", h + "px");
-  };
-
-  const close = () => {
-    nav.classList.remove("is-open");
-    btn.setAttribute("aria-expanded", "false");
-    document.body.classList.remove("menu-open");
-  };
-  const toggle = () => {
-    syncHeaderHeight();
-    const open = nav.classList.toggle("is-open");
-    btn.setAttribute("aria-expanded", open ? "true" : "false");
-    document.body.classList.toggle("menu-open", open);
-
-    // If the user is scrolled, ensure the menu's top is visible
-    if(open){
-      const top = header.getBoundingClientRect().top;
-      if(top < 0){
-        window.scrollTo({ top: window.scrollY + top, behavior: "auto" });
-      }
-    }
-  };
-
-  syncHeaderHeight();
-
-  btn.addEventListener("click", toggle);
-
-  document.addEventListener("keydown", (e) => {
-    if(e.key === "Escape") close();
-  });
-
-  // Close on navigation click (mobile UX)
-  nav.addEventListener("click", (e) => {
-    const a = e.target.closest("a");
-    if(a) close();
-  });
-
-  // If we go back to desktop, ensure nav is open (no collapsed state)
-  const mq = window.matchMedia("(min-width: 761px)");
-  const onChange = (e) => { if(e.matches) close(); };
-  if(mq.addEventListener) mq.addEventListener("change", onChange);
-  else mq.addListener(onChange);
-}
-
   function initLangMenu(){
-  const menu = document.querySelector(".lang-menu");
-  if(!menu) return;
+    const menu = document.querySelector(".lang-menu");
+    if(!menu) return;
 
-  // Close when clicking outside
-  document.addEventListener("click", function(e){
-    if(menu.open && !menu.contains(e.target)){
-      menu.removeAttribute("open");
-    }
-  });
+    document.addEventListener("click", function(e){
+      if(menu.open && !menu.contains(e.target)){
+        menu.removeAttribute("open");
+      }
+    });
 
-  // Close with Escape
-  document.addEventListener("keydown", function(e){
-    if(e.key === "Escape" && menu.open){
-      menu.removeAttribute("open");
-      const summary = menu.querySelector("summary");
-      if(summary) summary.focus();
-    }
-  });
-}
+    document.addEventListener("keydown", function(e){
+      if(e.key === "Escape" && menu.open){
+        menu.removeAttribute("open");
+        const summary = menu.querySelector("summary");
+        if(summary) summary.focus();
+      }
+    });
+  }
 
   document.addEventListener("DOMContentLoaded", function(){
+    syncThemeButton();
     initMenu();
     initLangMenu();
   });

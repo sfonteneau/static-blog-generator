@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 {% block content %}
-  <section class="hero">
-    <h1>{% if lang.code == 'en' %}Posts{% else %}Articles{% endif %}</h1>
+  <section class="hero" aria-labelledby="page-heading">
+    <h1 id="page-heading">{% if lang.code == 'en' %}Posts{% else %}Articles{% endif %}</h1>
     <p class="muted">{% if lang.code == 'en' %}Newest first.{% else %}Du plus récent au plus ancien.{% endif %}</p>
   </section>
 
-  <section class="posts">
+  <section class="posts" aria-label="{% if lang.code == 'en' %}Post list{% else %}Liste des articles{% endif %}">
     {% for p in posts %}
       <article class="card">
         <div class="card__meta">
-          {% if p.show_date %}<time datetime="{{ p.date_iso }}">{{ p.date_human }}</time>{% endif %}
-          {% if p.show_date and p.show_reading_time %}<span class="dot">•</span>{% endif %}
+          {% if p.show_date %}<span class="sr-only">{% if lang.code == 'en' %}Published on {% else %}Publié le {% endif %}</span><time datetime="{{ p.date_iso }}">{{ p.date_human }}</time>{% endif %}
+          {% if p.show_date and p.show_reading_time %}<span class="dot" aria-hidden="true">•</span>{% endif %}
           {% if p.show_reading_time %}<span class="muted">{{ p.reading_time }}</span>{% endif %}
         </div>
         <h2 class="card__title"><a href="{{ p.url }}">{{ p.title }}</a></h2>
@@ -22,7 +22,7 @@
   </section>
 
   {% if pagination and pagination.enabled %}
-    <nav class="pagination" aria-label="Pagination">
+    <nav class="pagination" aria-label="{% if lang.code == 'en' %}Post pagination{% else %}Pagination des articles{% endif %}">
       <div class="pagination__inner">
         {% if pagination.prev_url %}
           <a class="pagination__link" href="{{ pagination.prev_url }}" rel="prev">← {% if lang.code == 'en' %}Previous{% else %}Précédent{% endif %}</a>
@@ -34,14 +34,14 @@
 
   {# Page 1 #}
   {% if pagination.current == 1 %}
-    <span class="pagination__page is-current" aria-current="page">[1]</span>
+    <span class="pagination__page is-current" aria-current="page" aria-label="{% if lang.code == 'en' %}Page 1, current page{% else %}Page 1, page actuelle{% endif %}">[1]</span>
   {% else %}
-    <a class="pagination__page" href="{{ pagination.pages[0].url }}">1</a>
+    <a class="pagination__page" aria-label="{% if lang.code == 'en' %}Go to page 1{% else %}Aller à la page 1{% endif %}" href="{{ pagination.pages[0].url }}">1</a>
   {% endif %}
 
   {# Left ellipsis #}
   {% if pagination.current - w > 2 %}
-    <span class="pagination__ellipsis">…</span>
+    <span class="pagination__ellipsis" aria-hidden="true">…</span>
   {% endif %}
 
   {# Middle window #}
@@ -50,25 +50,25 @@
           and pg.num >= pagination.current - w
           and pg.num <= pagination.current + w %}
       {% if pg.is_current %}
-        <span class="pagination__page is-current" aria-current="page">[{{ pg.num }}]</span>
+        <span class="pagination__page is-current" aria-current="page" aria-label="{% if lang.code == 'en' %}Page {{ pg.num }}, current page{% else %}Page {{ pg.num }}, page actuelle{% endif %}">[{{ pg.num }}]</span>
       {% else %}
-        <a class="pagination__page" href="{{ pg.url }}">{{ pg.num }}</a>
+        <a class="pagination__page" aria-label="{% if lang.code == 'en' %}Go to page {{ pg.num }}{% else %}Aller à la page {{ pg.num }}{% endif %}" href="{{ pg.url }}">{{ pg.num }}</a>
       {% endif %}
     {% endif %}
   {% endfor %}
 
   {# Right ellipsis #}
   {% if pagination.current + w < pagination.total - 1 %}
-    <span class="pagination__ellipsis">…</span>
+    <span class="pagination__ellipsis" aria-hidden="true">…</span>
   {% endif %}
 
   {# Last page #}
   {% if pagination.total > 1 %}
     {% set last = pagination.pages[pagination.total - 1] %}
     {% if pagination.current == pagination.total %}
-      <span class="pagination__page is-current" aria-current="page">[{{ pagination.total }}]</span>
+      <span class="pagination__page is-current" aria-current="page" aria-label="{% if lang.code == 'en' %}Page {{ pagination.total }}, current page{% else %}Page {{ pagination.total }}, page actuelle{% endif %}">[{{ pagination.total }}]</span>
     {% else %}
-      <a class="pagination__page" href="{{ last.url }}">{{ pagination.total }}</a>
+      <a class="pagination__page" aria-label="{% if lang.code == 'en' %}Go to page {{ pagination.total }}{% else %}Aller à la page {{ pagination.total }}{% endif %}" href="{{ last.url }}">{{ pagination.total }}</a>
     {% endif %}
   {% endif %}
 </div>

@@ -61,6 +61,7 @@ from dataclasses import dataclass
 from datetime import datetime, date, time, timezone
 from pathlib import Path
 from email.utils import format_datetime
+from html.parser import HTMLParser
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import unquote, urljoin
 import xml.etree.ElementTree as ET
@@ -129,13 +130,94 @@ class Post:
     def reading_time(self) -> str:
         words = max(1, len(re.findall(r"\w+", self.html)))
         minutes = max(1, int(round(words / 200)))
-        return f"{minutes} min read"
+        return f"{minutes} min de lecture" if self.lang == "fr" else f"{minutes} min read"
 
 
 FRONT_MATTER_RE = re.compile(r"^\s*---\s*\n(.*?)\n---\s*\n(.*)$", re.DOTALL)
 IMG_MD_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 IMG_HTML_RE = re.compile(r'(<img\b[^>]*\bsrc=["\'])([^"\']+)(["\'])', re.IGNORECASE)
 IMG_SRC_RE = re.compile(r'<img\b[^>]*\bsrc=["\']([^"\']+)["\']', re.IGNORECASE)
+
+
+GENERIC_LINK_TEXTS = {
+    "cliquez ici", "cliquer ici", "ici", "en savoir plus", "lire plus", "plus",
+    "click here", "here", "learn more", "read more", "more",
+}
+
+
+@dataclass(frozen=True)
+class AccessibilityIssue:
+    severity: str
+    message: str
+
+
+class AccessibilityHTMLParser(HTMLParser):
+    """Small dependency-free audit for article HTML fragments."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.issues: List[AccessibilityIssue] = []
+        self.headings: List[int] = []
+        self._link_depth = 0
+        self._link_text: List[str] = []
+
+    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+        attrs_map = {name.lower(): value for name, value in attrs}
+        tag = tag.lower()
+
+        if tag == "img":
+            if "alt" not in attrs_map:
+                self.issues.append(AccessibilityIssue("warning", "image sans attribut alt"))
+            elif not str(attrs_map.get("alt") or "").strip():
+                self.issues.append(AccessibilityIssue("advisory", "image avec alt vide (correct uniquement si l’image est décorative)"))
+            if self._link_depth and attrs_map.get("alt"):
+                self._link_text.append(str(attrs_map["alt"]))
+
+        elif tag == "iframe" and not str(attrs_map.get("title") or "").strip():
+            self.issues.append(AccessibilityIssue("warning", "iframe sans attribut title"))
+
+        elif tag == "a":
+            self._link_depth += 1
+            if self._link_depth == 1:
+                self._link_text = []
+
+        elif re.fullmatch(r"h[1-6]", tag):
+            self.headings.append(int(tag[1]))
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() == "a" and self._link_depth:
+            if self._link_depth == 1:
+                label = re.sub(r"\s+", " ", "".join(self._link_text)).strip().lower().strip(" .,:;!?…")
+                if label in GENERIC_LINK_TEXTS:
+                    self.issues.append(AccessibilityIssue("warning", f"libellé de lien trop vague : « {label} »"))
+            self._link_depth -= 1
+            if self._link_depth == 0:
+                self._link_text = []
+
+    def handle_data(self, data: str) -> None:
+        if self._link_depth:
+            self._link_text.append(data)
+
+
+def normalize_article_headings(html: str) -> str:
+    """The page template already owns the h1, so body-level h1 become h2."""
+    html = re.sub(r"<h1(\b[^>]*)>", r"<h2\1>", html, flags=re.IGNORECASE)
+    return re.sub(r"</h1\s*>", "</h2>", html, flags=re.IGNORECASE)
+
+
+def audit_accessibility_html(html: str) -> List[AccessibilityIssue]:
+    parser = AccessibilityHTMLParser()
+    parser.feed(html)
+    issues = list(parser.issues)
+
+    previous = 1  # the article title in post.html
+    for level in parser.headings:
+        if level > previous + 1:
+            issues.append(AccessibilityIssue("warning", f"saut de niveau de titre : h{previous} vers h{level}"))
+        previous = level
+
+    # Keep warnings readable when the same issue occurs several times.
+    return list(dict.fromkeys(issues))
 
 
 def ensure_clean_dir(path: Path) -> None:
@@ -317,6 +399,17 @@ def copy_static_assets(style: str = "style.css", theme: str = "theme.js") -> Non
         raise FileNotFoundError(f"Missing theme.js file: {theme_src}")
     shutil.copy2(theme_src, ASSETS_DIR / "theme.js")
 
+    # Engine-owned accessibility baseline, always loaded after the visual theme.
+    accessibility_css = GENERATOR_ROOT / "assets" / "accessibility.css"
+    if not accessibility_css.is_file():
+        raise FileNotFoundError(f"Missing accessibility stylesheet: {accessibility_css}")
+    shutil.copy2(accessibility_css, ASSETS_DIR / "accessibility.css")
+
+    accessibility_js = GENERATOR_ROOT / "assets" / "accessibility.js"
+    if not accessibility_js.is_file():
+        raise FileNotFoundError(f"Missing accessibility script: {accessibility_js}")
+    shutil.copy2(accessibility_js, ASSETS_DIR / "accessibility.js")
+
 
 def resolve_site_url(site: Dict[str, Any]) -> str:
     """Return the public site URL without a trailing slash.
@@ -496,6 +589,11 @@ def build() -> None:
         rss_items = 20
     sitemap_cfg = cfg.get("sitemap", {}) if isinstance(cfg.get("sitemap", {}), dict) else {}
     sitemap_enabled = bool(sitemap_cfg.get("enabled", True))
+    accessibility_cfg = cfg.get("accessibility", {}) if isinstance(cfg.get("accessibility", {}), dict) else {}
+    accessibility_audit = bool(accessibility_cfg.get("audit", True))
+    accessibility_strict = bool(accessibility_cfg.get("strict", False))
+    accessibility_normalize_headings = bool(accessibility_cfg.get("normalize_headings", True))
+    accessibility_issues: List[Tuple[Path, AccessibilityIssue]] = []
     posts_per_page = int(cfg.get("pagination", {}).get("posts_per_page", 10) or 10)
     if posts_per_page <= 0:
         posts_per_page = 10
@@ -551,16 +649,34 @@ def build() -> None:
         for lang_code, rp in langs_map.items():
             translations = []
             if lang_code == "fr" and "en" in langs_map:
-                translations.append({"label": "EN", "url": f"../en/{langs_map['en']['slug']}/"})
+                translations.append({"label": "EN", "lang": "en", "url": f"../en/{langs_map['en']['slug']}/"})
             if lang_code == "en" and "fr" in langs_map:
-                translations.append({"label": "FR", "url": f"../../{langs_map['fr']['slug']}/"})
+                translations.append({"label": "FR", "lang": "fr", "url": f"../../{langs_map['fr']['slug']}/"})
 
             depth = 1 if lang_code == "fr" else 2
             rel_from_post = compute_rel(depth)
             processed = process_images_in_text(rp["body"], rp["path"], rel_from_post)
             html = md.markdown(processed, extensions=["fenced_code", "tables", "toc"], output_format="html5")
+            if accessibility_normalize_headings:
+                html = normalize_article_headings(html)
+            if accessibility_audit:
+                for issue in audit_accessibility_html(html):
+                    accessibility_issues.append((rp["path"], issue))
             excerpt = make_excerpt(html)
             posts.append(Post(key=key, lang=lang_code, title=rp["title"], slug=rp["slug"], date=rp["date"], show_date=bool(rp.get("show_date", True)), show_reading_time=bool(rp.get("show_reading_time", True)), listed=bool(rp.get("listed", True)), html=html, excerpt=excerpt, translations=translations))
+
+    if accessibility_issues:
+        strict_issues = []
+        for issue_path, issue in accessibility_issues:
+            marker = "⚠️ " if issue.severity == "warning" else "ℹ️ "
+            print(f"{marker} A11Y: {issue_path}: {issue.message}", file=sys.stderr)
+            if issue.severity == "warning":
+                strict_issues.append((issue_path, issue))
+        if accessibility_strict and strict_issues:
+            raise ValueError(
+                f"Accessibility audit failed with {len(strict_issues)} issue(s). "
+                "Fix them or set accessibility.strict: false."
+            )
 
     posts_by_lang: Dict[str, List[Post]] = {}
     for p in posts:
