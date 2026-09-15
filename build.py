@@ -405,11 +405,6 @@ def copy_static_assets(style: str = "style.css", theme: str = "theme.js") -> Non
         raise FileNotFoundError(f"Missing accessibility stylesheet: {accessibility_css}")
     shutil.copy2(accessibility_css, ASSETS_DIR / "accessibility.css")
 
-    accessibility_js = GENERATOR_ROOT / "assets" / "accessibility.js"
-    if not accessibility_js.is_file():
-        raise FileNotFoundError(f"Missing accessibility script: {accessibility_js}")
-    shutil.copy2(accessibility_js, ASSETS_DIR / "accessibility.js")
-
 
 def resolve_site_url(site: Dict[str, Any]) -> str:
     """Return the public site URL without a trailing slash.
